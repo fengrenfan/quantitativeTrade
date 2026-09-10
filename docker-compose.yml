@@ -1,0 +1,48 @@
+# 量化趋势看板 · Docker Compose
+# 说明：默认复用博客已有的 Redis；若 Redis 在别的 compose 网络里，
+#      把下面的 external_network 解开，或把 REDIS_HOST 指向宿主/容器地址。
+services:
+  engine:
+    build: ./engine
+    container_name: quant-engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+  backend:
+    build: ./backend
+    container_name: quant-backend
+    restart: unless-stopped
+    depends_on:
+      - engine
+    environment:
+      QUANT_ENGINE_URL: http://engine:8000
+      QUANT_DEFAULT_START: ${QUANT_DEFAULT_START:-2021-01-01}
+      QUANT_COST_BPS: ${QUANT_COST_BPS:-10}
+      QUANT_CACHE_TTL: ${QUANT_CACHE_TTL:-600}
+      QUANT_AUTH_ENABLED: ${QUANT_AUTH_ENABLED:-false}
+      JWT_SECRET: ${JWT_SECRET:-}
+      # 复用博客 Redis（host.docker.internal 指宿主；同网络则填 redis）
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8081:8081"
+
+  web:
+    build: ./web
+    container_name: quant-web
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8090:80"
+
+# 若要与博客服务同网络（复用其 Redis），解开以下配置并改为博客实际网络名：
+# networks:
+#   default:
+#     external: true
+#     name: blog_default

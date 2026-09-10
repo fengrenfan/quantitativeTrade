@@ -1,0 +1,32 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: quant-backend
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DB:0}
+      timeout: 2s
+
+# MySQL：后续接自选股/回测记录时启用（默认关闭，避免无库时启动失败）
+#  datasource:
+#    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:quant}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+#    username: ${MYSQL_USER:quant}
+#    password: ${MYSQL_PASSWORD:}
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+
+quant:
+  engine-base-url: ${QUANT_ENGINE_URL:http://localhost:8000}
+  default-start: ${QUANT_DEFAULT_START:2021-01-01}
+  cost-bps: ${QUANT_COST_BPS:10}
+  cache-ttl-seconds: ${QUANT_CACHE_TTL:600}
+  auth-enabled: ${QUANT_AUTH_ENABLED:false}
+  jwt-secret: ${JWT_SECRET:}
+
+logging:
+  level:
+    com.fengrenfan.quant: INFO
