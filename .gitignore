@@ -1,5 +1,6 @@
 # 环境变量
 .env
+docker-compose.override.yml
 
 # Python
 __pycache__/

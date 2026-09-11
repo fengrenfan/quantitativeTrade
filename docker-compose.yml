@@ -1,13 +1,20 @@
 # 量化趋势看板 · Docker Compose
-# 说明：默认复用博客已有的 Redis；若 Redis 在别的 compose 网络里，
-#      把下面的 external_network 解开，或把 REDIS_HOST 指向宿主/容器地址。
+#
+# 端口都可通过 .env 覆盖（避免与宿主已有服务冲突）：
+#   ENGINE_PORT / BACKEND_PORT / WEB_PORT
+#
+# 默认复用博客已有的 Redis：
+#   backend 的 REDIS_HOST 默认指向 host.docker.internal；
+#   若博客 Redis 与本项目在同一 docker 网络（推荐），在
+#   docker-compose.override.yml 里把 backend 接到该外部网络，
+#   并把 REDIS_HOST 设为博客 Redis 的容器名（如 blog-redis）。
 services:
   engine:
     build: ./engine
     container_name: quant-engine
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${ENGINE_PORT:-8000}:8000"
 
   backend:
     build: ./backend
@@ -22,7 +29,7 @@ services:
       QUANT_CACHE_TTL: ${QUANT_CACHE_TTL:-600}
       QUANT_AUTH_ENABLED: ${QUANT_AUTH_ENABLED:-false}
       JWT_SECRET: ${JWT_SECRET:-}
-      # 复用博客 Redis（host.docker.internal 指宿主；同网络则填 redis）
+      # 复用博客 Redis（host.docker.internal 指宿主；同网络则填 redis 容器名）
       REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
@@ -30,7 +37,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8081:8081"
+      - "${BACKEND_PORT:-8081}:8081"
 
   web:
     build: ./web
@@ -39,10 +46,4 @@ services:
     depends_on:
       - backend
     ports:
-      - "8090:80"
-
-# 若要与博客服务同网络（复用其 Redis），解开以下配置并改为博客实际网络名：
-# networks:
-#   default:
-#     external: true
-#     name: blog_default
+      - "${WEB_PORT:-8090}:80"
