@@ -3,7 +3,8 @@
 标的代码格式：6 位数字 + 交易所后缀，例如 600519.SH / 002594.SZ / 510300.SH
 
 返回的 DataFrame 带 attrs["source"]，取值：
-  - "akshare"：真实行情
+  - "akshare"：东方财富真实行情
+  - "tencent"：腾讯行情（东财不可用时的备选真实源）
   - "cache"  ：本地缓存
   - "mock"   ：合成兜底数据（不可用于投资决策）
 """
@@ -51,9 +52,9 @@ try:
 except Exception:  # akshare 未安装
     ak = None
 
-# 中文/英文列名 → 统一英文列名
+# 中文/英文列名 → 统一英文列名（腾讯接口返回的是小写列名且含 date）
 _REN = {
-    "日期": "Date", "时间": "Date",
+    "日期": "Date", "时间": "Date", "date": "Date",
     "开盘": "Open", "最高": "High", "最低": "Low", "收盘": "Close", "成交量": "Volume",
     "open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume",
 }
@@ -120,6 +121,19 @@ def _download_daily(code: str, start: str, end: str | None, adjust: str = "qfq")
     return _normalize(df)
 
 
+def _download_daily_tx(code: str, start: str, end: str | None, adjust: str = "qfq") -> pd.DataFrame:
+    """备选数据源：腾讯行情（东财被限流时使用）。symbol 形如 sh600519。"""
+    num, ex = _split_code(code)
+    end = end or _today()
+    df = ak.stock_zh_a_hist_tx(
+        symbol=f"{ex.lower()}{num}",
+        start_date=start.replace("-", ""),
+        end_date=end.replace("-", ""),
+        adjust=adjust,
+    )
+    return _normalize(df)
+
+
 def _download_60min(code: str, start: str, end: str | None, adjust: str = "qfq") -> pd.DataFrame:
     num, _ = _split_code(code)
     df = ak.stock_zh_a_hist_min_em(symbol=num, period="60", adjust=adjust)
@@ -168,23 +182,26 @@ def get_price(
         except OSError:
             pass
 
-    # 2) AkShare 实时拉取
+    # 2) 实时拉取：东财为主、腾讯为备，任一被限流可自动切换
     if ak is not None:
-        try:
-            if timeframe == "60min":
-                raw = _download_60min(code, start, end, adjust)
-            else:
-                raw = _download_daily(code, start, end, adjust)
-            df = _resample(raw, timeframe)
-            if df is None or len(df) == 0:
-                raise RuntimeError("AkShare 返回空数据")
-            out = df.loc[start:end]
-            if len(out) == 0:
-                raise RuntimeError(f"AkShare 在 {start} ~ {end or _today()} 区间无数据")
-            out.to_csv(path)
-            return _tag(out, "akshare")
-        except Exception as exc:  # 网络/接口异常 → 回退
-            print(f"[data] AkShare 获取 {code} 失败，回退合成数据：{exc}")
+        candidates = (
+            [("60min", _download_60min)]
+            if timeframe == "60min"
+            else [("akshare", _download_daily), ("tencent", _download_daily_tx)]
+        )
+        for source_name, fetch in candidates:
+            try:
+                raw = fetch(code, start, end, adjust)
+                df = _resample(raw, timeframe)
+                if df is None or len(df) == 0:
+                    raise RuntimeError("接口返回空数据")
+                out = df.loc[start:end]
+                if len(out) == 0:
+                    raise RuntimeError(f"{start} ~ {end or _today()} 区间无数据")
+                out.to_csv(path)
+                return _tag(out, source_name)
+            except Exception as exc:  # 网络/接口异常 → 换下一个源
+                print(f"[data] {source_name} 获取 {code} 失败：{exc}")
 
     # 3) 兜底：合成数据
     df = synthetic_60min(code, "2024-01-01", end) if timeframe == "60min" else synthetic_daily(code, start, end)

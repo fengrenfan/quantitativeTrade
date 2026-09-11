@@ -13,9 +13,10 @@ const STRATEGY_LABEL: Record<string, string> = {
 const TF_LABEL: Record<string, string> = { daily: '日线', weekly: '周线', '60min': '60分钟' }
 
 const SOURCE_LABEL: Record<string, { text: string; hint: string; warn: boolean }> = {
-  akshare: { text: '真实行情', hint: '数据来自 AkShare 实时拉取', warn: false },
+  akshare: { text: '真实行情·东方财富', hint: '数据来自 AkShare 拉取的东方财富行情', warn: false },
+  tencent: { text: '真实行情·腾讯', hint: '东方财富不可用，当前使用腾讯行情备选源', warn: false },
   cache: { text: '本地缓存', hint: '数据来自引擎本地缓存', warn: false },
-  mock: { text: '合成数据', hint: 'AkShare 不可用，当前为离线合成数据，仅供演示，不具备投资参考价值', warn: true },
+  mock: { text: '合成数据', hint: '所有真实行情源均不可用，当前为离线合成数据，仅供演示，不具备投资参考价值', warn: true },
   unknown: { text: '来源未知', hint: '未能识别数据来源', warn: true },
 }
 
