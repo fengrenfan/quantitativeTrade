@@ -57,6 +57,7 @@ uvicorn engine.app:app --host 0.0.0.0 --port 8000
 ```
 
 > 未安装 AkShare 或断网时，引擎会自动回退到**合成行情**，保证系统可跑通（仅供演示）。
+> 响应中的 `source` 字段会标明数据来源（`akshare` / `tencent` / `cache` / `mock`）。
 
 ### 2) 后端（Spring Boot，需 JDK 17 + Maven）
 
@@ -78,14 +79,70 @@ npm run dev
 ## 二、Docker Compose 部署
 
 ```bash
-cp .env.example .env   # 填好 Redis / JWT 等
+cp .env.example .env   # 填好 Redis / JWT / 端口
 docker compose up -d --build
 # 前端 http://<服务器>:8090
 ```
 
+### 端口可配置（避免与已占用端口冲突）
+
+三个服务的主机端口都能用 `.env` 覆盖：
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `ENGINE_PORT` | `8000` | Python 引擎 |
+| `BACKEND_PORT` | `8081` | Spring Boot 网关 |
+| `WEB_PORT` | `8090` | 前端（唯一需要对外暴露的） |
+
+### 服务器本地覆盖：docker-compose.override.yml
+
+该文件已在 `.gitignore` 中，用于放「只属于这台机器」的配置。国内服务器建议同时指定镜像源，
+否则 pip / npm / maven 下载会慢到几十分钟：
+
+```yaml
+services:
+  engine:
+    build:
+      args:
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+  backend:
+    build:
+      args:
+        MAVEN_MIRROR: https://maven.aliyun.com/repository/public
+    networks:
+      - default
+      - blognet          # 接入博客网络以复用 blog-redis
+  web:
+    build:
+      args:
+        NPM_REGISTRY: https://registry.npmmirror.com
+
+networks:
+  blognet:
+    external: true
+    name: docker_default
+```
+
 - `web`（nginx）会把 `/api/` 反代到 `backend:8081`。
-- 复用博客 Redis：把 `REDIS_HOST` 指向博客 Redis 容器/宿主，或解开 compose 里的 external network 配置。
-- 生产建议在 nginx 上挂子域名/子路径（如 `quant.xiaodigua.shop`）并配 HTTPS。
+- 复用博客 Redis：让 `backend` 接入博客所在网络，`REDIS_HOST` 填博客 Redis 的容器名
+  （如 `blog-redis`）；Redis 不可用时网关自动降级为直连引擎，功能不受影响。
+- 生产建议在宿主 nginx 上挂子域名（如 `quant.xiaodigua.shop`）并配 HTTPS，
+  这样只需复用已放通的 80/443，不必额外开放端口。
+
+### 数据源与容灾
+
+`engine/data.py` 按 **东方财富 → 腾讯 → 合成数据** 依次尝试，全部失败才回退合成数据，
+并在响应里用 `source` 字段标明来源，前端顶部有对应徽标：
+
+| `source` | 含义 |
+|----------|------|
+| `akshare` | 东方财富真实行情 |
+| `tencent` | 腾讯真实行情（东财不可用时的备选） |
+| `cache` | 引擎本地 CSV 缓存 |
+| `mock` | 合成数据（不可用于投资决策，前端会黄色告警） |
+
+> 注意：东方财富在密集请求后会**限流整个 IP**，此时接口会直接断连。
+> 代码已给 `requests` 注入浏览器 UA（默认 UA 会被拒），并内置腾讯备选源。
 
 ## 三、接入你的博客底座
 
