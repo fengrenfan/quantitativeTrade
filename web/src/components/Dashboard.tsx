@@ -12,6 +12,13 @@ const STRATEGY_LABEL: Record<string, string> = {
 }
 const TF_LABEL: Record<string, string> = { daily: '日线', weekly: '周线', '60min': '60分钟' }
 
+const SOURCE_LABEL: Record<string, { text: string; hint: string; warn: boolean }> = {
+  akshare: { text: '真实行情', hint: '数据来自 AkShare 实时拉取', warn: false },
+  cache: { text: '本地缓存', hint: '数据来自引擎本地缓存', warn: false },
+  mock: { text: '合成数据', hint: 'AkShare 不可用，当前为离线合成数据，仅供演示，不具备投资参考价值', warn: true },
+  unknown: { text: '来源未知', hint: '未能识别数据来源', warn: true },
+}
+
 export default function Dashboard() {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [symbol, setSymbol] = useState('600519.SH')
@@ -49,6 +56,8 @@ export default function Dashboard() {
   }, [])
 
   const m = data?.metrics
+  const src = SOURCE_LABEL[data?.source ?? 'unknown'] ?? SOURCE_LABEL.unknown
+  const isEmpty = !!data && (m?.bars ?? 0) === 0
   const pct = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(2)}%`)
   const num = (v?: number | null) => (v == null ? '—' : v.toFixed(2))
   const cls = (v?: number | null) => (v == null ? '' : v >= 0 ? 'pos' : 'neg')
@@ -61,7 +70,14 @@ export default function Dashboard() {
           <div className="subtitle">A股 · 多标的 / 多策略 / 多周期 / 多参数 · Python 引擎 + Spring Boot 网关 + ECharts</div>
         </div>
         {data && (
-          <span className={`badge ${data.signal === '持多' ? 'long' : 'flat'}`}>当前信号：{data.signal}</span>
+          <div className="header-badges">
+            {src && (
+              <span className={`badge ${src.warn ? 'warn' : 'src'}`} title={src.hint}>
+                数据来源：{src.text}
+              </span>
+            )}
+            <span className={`badge ${data.signal === '持多' ? 'long' : 'flat'}`}>当前信号：{data.signal}</span>
+          </div>
         )}
       </div>
 
@@ -106,6 +122,12 @@ export default function Dashboard() {
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
+
+      {isEmpty && (
+        <div className="error">⚠ 当前区间没有取到行情数据（bars=0），请检查数据源或调整区间。</div>
+      )}
+
+      {data && src.warn && !isEmpty && <div className="notice">ℹ {src.hint}</div>}
 
       {m && (
         <div className="metrics">

@@ -30,6 +30,7 @@ def run_signal(
         raise ValueError(f"未知周期：{timeframe}")
 
     raw = get_price(symbol, start=start, end=end, timeframe=timeframe)
+    data_source = raw.attrs.get("source", "unknown")
     close = raw["Adj Close"].astype(float)
     close.name = symbol
 
@@ -73,6 +74,7 @@ def run_signal(
         "timeframe": timeframe,
         "fast": fast,
         "slow": slow,
+        "source": data_source,
         "dates": dates,
         "kline": kline,
         "nav": nav,

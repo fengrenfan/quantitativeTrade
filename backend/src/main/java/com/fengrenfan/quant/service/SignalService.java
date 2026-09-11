@@ -69,7 +69,12 @@ public class SignalService {
         try {
             String json = redis.opsForValue().get(key);
             if (json != null) {
-                return mapper.readValue(json, Map.class);
+                Map<String, Object> cached = mapper.readValue(json, Map.class);
+                // 历史上可能缓存过空结果（如引擎拉数失败），当作未命中，避免长时间返回空
+                if (!isEmptyResult(cached)) {
+                    return cached;
+                }
+                redis.delete(key);
             }
         } catch (Exception e) {
             log.debug("Redis 读缓存跳过：{}", e.getMessage());
@@ -78,11 +83,29 @@ public class SignalService {
     }
 
     private void writeCache(String key, Map<String, Object> res) {
+        if (isEmptyResult(res)) {
+            log.debug("结果为空（bars=0），跳过写入缓存");
+            return;
+        }
         try {
             redis.opsForValue().set(key, mapper.writeValueAsString(res),
                     Duration.ofSeconds(props.getCacheTtlSeconds()));
         } catch (Exception e) {
             log.debug("Redis 写缓存跳过：{}", e.getMessage());
         }
+    }
+
+    private boolean isEmptyResult(Map<String, Object> res) {
+        if (res == null) {
+            return true;
+        }
+        Object metrics = res.get("metrics");
+        if (metrics instanceof Map<?, ?> m) {
+            Object bars = m.get("bars");
+            if (bars instanceof Number n) {
+                return n.intValue() == 0;
+            }
+        }
+        return false;
     }
 }

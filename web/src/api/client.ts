@@ -31,6 +31,8 @@ export interface SignalResponse {
   timeframe: string
   fast: number
   slow: number
+  /** 数据来源：akshare(真实行情) / cache(本地缓存) / mock(合成兜底数据) */
+  source?: string
   dates: string[]
   kline: KlineBar[]
   nav: number[]
