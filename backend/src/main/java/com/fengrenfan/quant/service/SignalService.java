@@ -35,6 +35,10 @@ public class SignalService {
         return engine.catalog();
     }
 
+    public Map<String, Object> symbols(String q, String type, int limit) {
+        return engine.symbols(q, type, limit);
+    }
+
     public String engineHealth() {
         try {
             engine.health();

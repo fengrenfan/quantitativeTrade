@@ -1,6 +1,12 @@
-"""数据层：优先用 AkShare 拉 A 股/ETF 行情并本地缓存，失败时回退到合成数据。
+"""数据层：优先用 AkShare 拉 A 股 / ETF / 指数行情并本地缓存，失败时回退到合成数据。
 
-标的代码格式：6 位数字 + 交易所后缀，例如 600519.SH / 002594.SZ / 510300.SH
+标的代码格式：6 位数字 + 交易所后缀，例如 600519.SH / 002594.SZ / 510300.SH / 000300.SH
+（指数与个股共用同一套格式与缓存命名，靠 `engine.indexes` 的静态表区分，见该模块）
+
+取数优先级（服务器实测结论）：
+  - 个股日线：东财 → 腾讯
+  - 指数日线：腾讯 → 东财（东财的指数接口在服务器 IP 上常被限流，腾讯明显更稳）
+  - ETF 日线：东财（fund_etf_hist_em）→ 腾讯
 
 返回的 DataFrame 带 attrs["source"]，取值：
   - "akshare"：东方财富真实行情
@@ -14,7 +20,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from . import config
+from . import config, indexes
 from .mock_data import synthetic_60min, synthetic_daily
 
 # 部分行情接口（如东方财富）会对 python-requests 的默认 UA 直接断连
@@ -53,10 +59,14 @@ except Exception:  # akshare 未安装
     ak = None
 
 # 中文/英文列名 → 统一英文列名（腾讯接口返回的是小写列名且含 date）
+# 注意：腾讯给的是 amount（成交额，元），与 volume（成交量，股）语义不同，
+# 不能都映射成 Volume —— 否则两列同时存在时会撞成重复列。这里单独存 Amount，
+# 只在确实没有成交量时才拿它顶替（指数接口就只有 amount）。
 _REN = {
     "日期": "Date", "时间": "Date", "date": "Date",
     "开盘": "Open", "最高": "High", "最低": "Low", "收盘": "Close", "成交量": "Volume",
     "open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume",
+    "amount": "Amount", "成交额": "Amount",
 }
 
 
@@ -90,15 +100,21 @@ def _is_etf(num: str, ex: str) -> bool:
 
 def _normalize(df: pd.DataFrame) -> pd.DataFrame:
     df = df.rename(columns=_REN)
+    # 不同原始列可能映射到同一个目标名，去重保留第一个，避免 df["X"] 变成 DataFrame
+    df = df.loc[:, ~df.columns.duplicated()]
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"])
         df = df.set_index("Date")
     df = df.sort_index()
     if "Adj Close" not in df.columns:
         df["Adj Close"] = df.get("Close")
-    for k in ["Open", "High", "Low", "Close", "Volume"]:
+    close = df["Close"] if "Close" in df.columns else 0.0
+    for k in ["Open", "High", "Low", "Close"]:
         if k not in df.columns:
-            df[k] = df["Close"] if "Close" in df.columns else 0.0
+            df[k] = close
+    # 成交量：优先用真实成交量；没有才退而用成交额；都没有补 0（不再拿收盘价顶上）
+    if "Volume" not in df.columns:
+        df["Volume"] = df["Amount"] if "Amount" in df.columns else 0.0
     df = df[[c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in df.columns]]
     df.index.name = "Date"
     return df
@@ -138,6 +154,47 @@ def _download_60min(code: str, start: str, end: str | None, adjust: str = "qfq")
     num, _ = _split_code(code)
     df = ak.stock_zh_a_hist_min_em(symbol=num, period="60", adjust=adjust)
     return _normalize(df)
+
+
+# ------------------------------- 指数取数 ------------------------------- #
+def _download_index_tx(code: str, start: str, end: str | None, adjust: str = "qfq") -> pd.DataFrame:
+    """指数日线（主用）：腾讯行情。
+
+    该接口返回全量历史（如沪深300 从 2005 年起 5200+ 根），不接受区间参数，
+    因此由 get_price 统一按请求区间切片 —— 顺带把区间过滤放在一处，避免各源行为不一致。
+    """
+    num, ex = _split_code(code)
+    df = ak.stock_zh_index_daily_tx(symbol=f"{ex.lower()}{num}")
+    return _normalize(df)
+
+
+def _download_index_em(code: str, start: str, end: str | None, adjust: str = "qfq") -> pd.DataFrame:
+    """指数日线（备选）：东方财富。"""
+    num, _ = _split_code(code)
+    end = end or _today()
+    df = ak.index_zh_a_hist(
+        symbol=num, period="daily",
+        start_date=start.replace("-", ""), end_date=end.replace("-", ""),
+    )
+    return _normalize(df)
+
+
+def _download_index_60min(code: str, start: str, end: str | None, adjust: str = "qfq") -> pd.DataFrame:
+    """指数 60 分钟线：东方财富（指数没有腾讯 60 分钟备选）。"""
+    num, _ = _split_code(code)
+    df = ak.index_zh_a_hist_min_em(symbol=num, period="60")
+    return _normalize(df)
+
+
+def _candidates(code: str, timeframe: str) -> list[tuple[str, object]]:
+    """按标的类型 + 周期给出取数候选，按优先级排列。"""
+    if indexes.is_index(code):
+        if timeframe == "60min":
+            return [("akshare", _download_index_60min)]
+        return [("tencent", _download_index_tx), ("akshare", _download_index_em)]
+    if timeframe == "60min":
+        return [("akshare", _download_60min)]
+    return [("akshare", _download_daily), ("tencent", _download_daily_tx)]
 
 
 def _resample(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
@@ -182,14 +239,9 @@ def get_price(
         except OSError:
             pass
 
-    # 2) 实时拉取：东财为主、腾讯为备，任一被限流可自动切换
+    # 2) 实时拉取：按标的类型选候选源，任一被限流可自动切换
     if ak is not None:
-        candidates = (
-            [("60min", _download_60min)]
-            if timeframe == "60min"
-            else [("akshare", _download_daily), ("tencent", _download_daily_tx)]
-        )
-        for source_name, fetch in candidates:
+        for source_name, fetch in _candidates(code, timeframe):
             try:
                 raw = fetch(code, start, end, adjust)
                 df = _resample(raw, timeframe)

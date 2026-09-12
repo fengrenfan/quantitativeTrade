@@ -27,6 +27,8 @@ export interface Metrics {
 
 export interface SignalResponse {
   symbol: string
+  name?: string
+  type?: 'stock' | 'etf' | 'index'
   strategy: string
   timeframe: string
   fast: number
@@ -51,6 +53,27 @@ export interface Catalog {
   timeframes: string[]
   defaultFast: number
   defaultSlow: number
+  symbolStats?: {
+    total: number
+    byType?: Record<string, number>
+    source?: string
+  }
+}
+
+export interface SymbolHit {
+  code: string
+  name: string
+  type: 'stock' | 'etf' | 'index'
+  py?: string
+  group?: string
+}
+
+export interface SymbolSearchResult {
+  query: string
+  total: number
+  count: number
+  source: string
+  results: SymbolHit[]
 }
 
 const BASE = (import.meta as any).env?.VITE_API_BASE ?? ''
@@ -58,6 +81,17 @@ const BASE = (import.meta as any).env?.VITE_API_BASE ?? ''
 export async function fetchCatalog(): Promise<Catalog> {
   const r = await fetch(`${BASE}/api/catalog`)
   if (!r.ok) throw new Error(`加载元数据失败：${r.status}`)
+  return r.json()
+}
+
+export async function fetchSymbols(q: string, type?: string, limit = 30): Promise<SymbolSearchResult> {
+  const params = new URLSearchParams({ q, limit: String(limit) })
+  if (type) params.set('type', type)
+  const r = await fetch(`${BASE}/api/symbols?${params.toString()}`)
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    throw new Error(txt || `搜索标的失败：${r.status}`)
+  }
   return r.json()
 }
 

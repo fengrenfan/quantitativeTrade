@@ -6,7 +6,8 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from engine.service import catalog, run_signal
+from engine import symbols
+from engine.service import catalog, run_signal, search_symbols
 
 app = FastAPI(title="Quant Engine", version="0.1.0", description="A股日线趋势信号引擎")
 
@@ -18,6 +19,12 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def _warmup_symbols() -> None:
+    """后台预热全市场标的表，避免第一次搜索卡 20 秒。"""
+    symbols.warmup()
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -26,6 +33,18 @@ def health() -> dict:
 @app.get("/catalog")
 def get_catalog() -> dict:
     return catalog()
+
+
+@app.get("/symbols")
+def get_symbols(
+    q: str = Query("", description="代码 / 名称 / 拼音首字母，留空返回常用标的"),
+    type: str = Query("", description="逗号分隔：stock,etf,index；留空为全部"),
+    limit: int = Query(30, ge=1, le=200),
+) -> dict:
+    try:
+        return search_symbols(q=q, types=type or None, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/signal")

@@ -15,6 +15,9 @@ services:
     restart: unless-stopped
     ports:
       - "${ENGINE_PORT:-8000}:8000"
+    volumes:
+      # 持久化行情缓存 + 全市场标的表快照，重建镜像/容器后不丢失
+      - quant_data:/app/engine/cache
 
   backend:
     build: ./backend
@@ -47,3 +50,7 @@ services:
       - backend
     ports:
       - "${WEB_PORT:-8090}:80"
+
+volumes:
+  quant_data:
+    name: quant_data

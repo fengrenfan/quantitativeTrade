@@ -1,7 +1,7 @@
 """编排层：把「取数 → 策略 → 回测 → 绩效」串起来，输出前端可直接渲染的结构。"""
 import pandas as pd
 
-from . import config
+from . import config, indexes, symbols
 from .backtest import backtest_weights
 from .data import get_price
 from .metrics import summary
@@ -28,6 +28,13 @@ def run_signal(
         raise ValueError(f"未知策略：{strategy}")
     if timeframe not in config.TIMEFRAMES:
         raise ValueError(f"未知周期：{timeframe}")
+
+    meta = symbols.lookup(symbol)
+    if meta:
+        symbol_name, symbol_type = meta["name"], meta["type"]
+    else:  # 注册表里没有（比如刚上市/北交所），至少把类型判对
+        symbol_name = symbol
+        symbol_type = "index" if indexes.is_index(symbol) else "stock"
 
     raw = get_price(symbol, start=start, end=end, timeframe=timeframe)
     data_source = raw.attrs.get("source", "unknown")
@@ -70,6 +77,8 @@ def run_signal(
 
     return {
         "symbol": symbol,
+        "name": symbol_name,
+        "type": symbol_type,
         "strategy": strategy,
         "timeframe": timeframe,
         "fast": fast,
@@ -95,4 +104,17 @@ def catalog() -> dict:
         "timeframes": config.TIMEFRAMES,
         "defaultFast": config.DEFAULT_FAST,
         "defaultSlow": config.DEFAULT_SLOW,
+        "symbolStats": symbols.stats(),
     }
+
+
+def search_symbols(q: str = "", types: str | None = None, limit: int = 30) -> dict:
+    """全市场标的搜索。types 为逗号分隔的 stock/etf/index，留空表示全部。"""
+    type_set = None
+    if types:
+        parsed = {t.strip().lower() for t in types.split(",") if t.strip()}
+        unknown = parsed - set(symbols.TYPE_ORDER)
+        if unknown:
+            raise ValueError(f"未知标的类型：{','.join(sorted(unknown))}")
+        type_set = parsed or None
+    return symbols.search(q, types=type_set, limit=limit)

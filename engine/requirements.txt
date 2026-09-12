@@ -4,3 +4,5 @@ akshare>=1.12
 fastapi>=0.110
 uvicorn[standard]>=0.27
 requests>=2.31
+# 标的搜索支持拼音首字母（gzmt → 贵州茅台）；纯 Python，无编译依赖
+pypinyin>=0.51

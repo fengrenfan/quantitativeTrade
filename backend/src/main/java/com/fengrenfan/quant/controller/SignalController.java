@@ -34,6 +34,18 @@ public class SignalController {
         }
     }
 
+    @GetMapping("/symbols")
+    public ResponseEntity<?> symbols(
+            @RequestParam(defaultValue = "") String q,
+            @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "30") int limit) {
+        try {
+            return ResponseEntity.ok(service.symbols(q, type, limit));
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", "引擎不可用：" + e.getMessage()));
+        }
+    }
+
     @GetMapping("/signal")
     public ResponseEntity<?> signal(
             @RequestParam(defaultValue = "600519.SH") String symbol,

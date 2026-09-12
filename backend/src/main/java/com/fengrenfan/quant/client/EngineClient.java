@@ -24,6 +24,18 @@ public class EngineClient {
                 .body(new ParameterizedTypeReference<>() {});
     }
 
+    public Map<String, Object> symbols(String q, String type, int limit) {
+        return restClient.get().uri(uriBuilder -> {
+            uriBuilder.path("/symbols")
+                    .queryParam("q", q)
+                    .queryParam("limit", limit);
+            if (type != null && !type.isBlank()) {
+                uriBuilder.queryParam("type", type);
+            }
+            return uriBuilder.build();
+        }).retrieve().body(new ParameterizedTypeReference<>() {});
+    }
+
     public Map<String, Object> signal(String symbol, String strategy, String timeframe,
                                       int fast, int slow, String start, Integer costBps) {
         return restClient.get().uri(uriBuilder -> {

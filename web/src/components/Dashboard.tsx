@@ -3,6 +3,7 @@ import { fetchCatalog, fetchSignal } from '../api/client'
 import type { Catalog, SignalResponse } from '../api/client'
 import EquityChart from './EquityChart'
 import KlineChart from './KlineChart'
+import SymbolPicker from './SymbolPicker'
 
 const STRATEGY_LABEL: Record<string, string> = {
   dual_ma: '双均线',
@@ -23,6 +24,7 @@ const SOURCE_LABEL: Record<string, { text: string; hint: string; warn: boolean }
 export default function Dashboard() {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [symbol, setSymbol] = useState('600519.SH')
+  const [symbolName, setSymbolName] = useState('')
   const [strategy, setStrategy] = useState('dual_ma')
   const [timeframe, setTimeframe] = useState('daily')
   const [fast, setFast] = useState(5)
@@ -72,6 +74,14 @@ export default function Dashboard() {
         </div>
         {data && (
           <div className="header-badges">
+            {data.name && data.name !== data.symbol && (
+              <span className="badge src">{data.name}</span>
+            )}
+            {data.type && (
+              <span className={`badge type ${data.type}`}>
+                {data.type === 'index' ? '指数' : data.type === 'etf' ? 'ETF' : '个股'}
+              </span>
+            )}
             {src && (
               <span className={`badge ${src.warn ? 'warn' : 'src'}`} title={src.hint}>
                 数据来源：{src.text}
@@ -84,13 +94,16 @@ export default function Dashboard() {
 
       <div className="panel" style={{ marginBottom: 18 }}>
         <div className="controls">
-          <div className="field">
+          <div className="field grow">
             <label>标的</label>
-            <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-              {(catalog?.symbols ?? ['600519.SH']).map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            <SymbolPicker
+              value={symbol}
+              name={symbolName || data?.name}
+              onChange={(code, nm) => {
+                setSymbol(code)
+                if (nm) setSymbolName(nm)
+              }}
+            />
           </div>
           <div className="field">
             <label>策略</label>
