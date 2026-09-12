@@ -30,7 +30,9 @@ try:  # 拼音搜索是加分项，缺了也不影响主流程
 except Exception:  # pragma: no cover
     _HAS_PINYIN = False
 
-SNAPSHOT_VERSION = 1
+# 快照版本：改了 entry 结构或拼音生成规则时必须 +1，否则旧快照会被继续沿用
+# v2：拼音改用 errors="default"（v1 的 errors="ignore" 把数字吃掉了，hs300 搜不到）
+SNAPSHOT_VERSION = 2
 SNAPSHOT_TTL_SECONDS = 7 * 24 * 3600
 TYPE_ORDER = {"index": 0, "stock": 1, "etf": 2}
 
@@ -70,12 +72,17 @@ _STATE: dict = {
 # 拼音
 # --------------------------------------------------------------------------- #
 def _pinyin_pair(name: str) -> tuple[str, str]:
-    """返回 (首字母缩写, 全拼)，例如 贵州茅台 → ("gzmt", "guizhoumaotai")。"""
+    """返回 (首字母缩写, 全拼)，例如 贵州茅台 → ("gzmt", "guizhoumaotai")。
+
+    必须用 errors="default" 而不是 "ignore"：后者会把非中文部分**直接丢掉**，
+    于是「沪深300」会变成 "hs" 而不是 "hs300"，用户搜 hs300 就搜不到了。
+    default 会原样保留数字/字母，因此「沪深300ETF」→ "hs300etf"。
+    """
     if not _HAS_PINYIN or not name:
         return "", ""
     try:
-        initials = "".join(lazy_pinyin(name, style=Style.FIRST_LETTER, errors="ignore")).lower()
-        full = "".join(lazy_pinyin(name, errors="ignore")).lower()
+        initials = "".join(lazy_pinyin(name, style=Style.FIRST_LETTER, errors="default")).lower()
+        full = "".join(lazy_pinyin(name, errors="default")).lower()
         return initials, full
     except Exception:
         return "", ""
